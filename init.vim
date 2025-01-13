@@ -12,8 +12,8 @@ set tabstop=4
 set smartindent
 set background=dark
 set t_Co=256
-set textwidth=100
 set fileformat=unix
+set clipboard=unnamedplus
 set ruler
 let mapleader = " "
 set guicursor=n-v-c:block-Cursor
@@ -24,22 +24,47 @@ nnoremap <leader>fg <cmd>Telescope live_grep<cr>
 nnoremap <leader>fb <cmd>Telescope buffers<cr>
 nnoremap <leader>fh <cmd>Telescope help_tags<cr>
 
-nnoremap <silent> <leader>rc :!bash .run_compile.bash<cr>
-nnoremap <silent> <leader>cc :!bash .compile.bash<cr>
-nnoremap <silent> <leader>rr :!bash .run_compile_release.bash<cr>
+" Comment/uncomment for both normal and visual modes
+nnoremap <leader>cc ^i// <Esc>    " Single line without selection
+vnoremap <leader>cc :norm ^i// <CR>   " Multiple lines with selection
+nnoremap <leader>uu ^xxx<Esc>     " Single line without selection
+vnoremap <leader>uu :norm ^xxx<CR>    " Multiple lines with selection
 
-nnoremap <silent> <leader>make :!cd build ; cmake ../ ; make all<cr>
+function! FormatFunctionLine()
+    let l:line = getline(".")
+    if l:line =~ '^\s*\(.*\)(.*) {$'
+        let l:args = matchlist(l:line, '^\s*\(.*\)(\(.*\)) {')[2]
+        let l:argsList = split(l:args, ',\s\+')
+        let l:newLine = substitute(l:line, '('.l:args.')', "(\n\t\t" . join(l:argsList, ",\n\t\t") . "\n\t\t)", "")
+        call setline(".", l:newLine)
+    endif
+endfunction
 
-autocmd FileType python map <buffer> <F9> :w<CR>:exec '!python3' shellescape(@%, 1)<CR>
-autocmd FileType python imap <buffer> <F9> <esc>:w<CR>:exec '!python3' shellescape(@%, 1)<CR>
+nnoremap <leader>jj :call FormatFunctionLine()<CR>
+
+autocmd FileType python map <buffer> <F9> :w<CR>:exec '!python' shellescape(@%, 1)<CR>
+autocmd FileType python imap <buffer> <F9> <esc>:w<CR>:exec '!python' shellescape(@%, 1)<CR>
+
+autocmd FileType rust map <buffer> <F9> :w<CR>:exec '!cargo run --release' shellescape(@%, 1)<CR>
+autocmd FileType rust imap <buffer> <F9> <esc>:w<CR>:exec '!cargo run --release' shellescape(@%, 1)<CR>
+
+autocmd FileType c map <buffer> <F9> :w<CR>:exec '!make run' shellescape(@%, 1)<CR>
+autocmd FileType c imap <buffer> <F9> <esc>:w<CR>:exec '!make run' shellescape(@%, 1)<CR>
+autocmd FileType cpp map <buffer> <F9> :w<CR>:exec '!make run' shellescape(@%, 1)<CR>
+autocmd FileType cpp imap <buffer> <F9> <esc>:w<CR>:exec '!make run' shellescape(@%, 1)<CR>
+
+autocmd FileType zig map <buffer> <F6> :w<CR>:exec '!zig test' shellescape(@%, 1)<CR>
+autocmd FileType zig map <buffer> <F7> :w<CR>:exec '!zig build run -Doptimize=Debug'<CR>
+autocmd FileType zig map <buffer> <F8> :w<CR>:exec '!zig build run -Doptimize=ReleaseSafe'<CR>
+autocmd FileType zig map <buffer> <F9> :w<CR>:exec '!zig build run -Doptimize=ReleaseFast'<CR>
+
 
 call plug#begin()
 Plug 'jsborjesson/vim-uppercase-sql'
 Plug 'morhetz/gruvbox'
-Plug 'Mofiqul/vscode.nvim'
 Plug 'rust-lang/rust.vim'
 Plug 'nvim-lua/plenary.nvim'
-Plug 'nvim-telescope/telescope.nvim', {'tag': '0.1.0'}
+Plug 'nvim-telescope/telescope.nvim'
 Plug 'nvim-treesitter/nvim-treesitter', {'do': ':TSUpdate'}
 Plug 'neovim/nvim-lspconfig'
 Plug 'williamboman/mason.nvim'
@@ -52,7 +77,10 @@ Plug 'hrsh7th/cmp-vsnip'
 call plug#end()
 
 colorscheme gruvbox
-"colorscheme vscode
+
+let g:LanguageClient_serverCommands = {
+\ 'rust': ['rust-analyzer'],
+\ }
 
 lua <<EOF
 require'nvim-treesitter.configs'.setup {
@@ -69,11 +97,16 @@ require'nvim-treesitter.configs'.setup {
 }
 require("mason").setup()
 
-local servers = {'clangd', 'pyright'}
+local servers = {'clangd', 'pyright', 'rust_analyzer', 'zls'}
 require'lspconfig'.clangd.setup{}
 require'lspconfig'.pyright.setup{}
+require'lspconfig'.rust_analyzer.setup{}
+require'lspconfig'.zls.setup{}
 
 EOF
+
+let g:zig_fmt_save 	   = 0
+let g:zig_fmt_autosave = 0
 
 set completeopt=menu,menuone,noselect
 
@@ -147,3 +180,5 @@ lua <<EOF
     capabilities = capabilities
   }
 EOF
+
+let g:clangd_args = ['--compile-commands=%:p:h/compile_commands.json']
