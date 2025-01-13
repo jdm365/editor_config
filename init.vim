@@ -13,7 +13,7 @@ set smartindent
 set background=dark
 set t_Co=256
 set fileformat=unix
-set clipboard=unnamedplus
+set clipboard+=unnamedplus
 set ruler
 let mapleader = " "
 set guicursor=n-v-c:block-Cursor
