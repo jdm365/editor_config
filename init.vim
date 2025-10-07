@@ -18,6 +18,7 @@ set ruler
 let mapleader = " "
 set guicursor=n-v-c:block-Cursor
 set guicursor+=n-v-c:blinkon0
+set relativenumber
 
 nnoremap <leader>ff <cmd>Telescope find_files<cr>
 nnoremap <leader>fg <cmd>Telescope live_grep<cr>
@@ -29,6 +30,50 @@ nnoremap <leader>cc ^i// <Esc>    " Single line without selection
 vnoremap <leader>cc :norm ^i// <CR>   " Multiple lines with selection
 nnoremap <leader>uu ^xxx<Esc>     " Single line without selection
 vnoremap <leader>uu :norm ^xxx<CR>    " Multiple lines with selection
+
+" noremap <leader>tt ?^[ \t]*[^.].*=[^=]?<Esc>f=byiwostd.debug.print(\"<Esc>pviwgUa: {d}\n\", .{<Esc>pa});<Esc>/asdfjklasdf<Enter>0		" Zig; gen print statement for variable in the line above.
+
+" Zig; gen print statement for variable in the line above.
+function! s:GenZigPrint()
+  " Search backwards for a line containing an assignment operator (=, not ==)
+  " The pattern '\v\w+\s*=[^=]' looks for a word, optional space, then = followed by not =
+  let lnum = search('\v\w+\s*=[^=]', 'bW')
+
+  " Check if a match was found
+  if lnum == 0
+    echo "No variable assignment found above."
+    return
+  endif
+
+  let line_content = getline(lnum)
+
+  " Now, check if the found line is a field assignment (starts with '.')
+  if line_content =~ '^\s*\.'
+    echo "Found an assignment, but it's a field assignment (starts with '.'). Skipping."
+    return
+  endif
+
+  " Extract the variable name using the same robust pattern.
+  " '\ze' marks the end of the match, so we only get the variable name itself.
+  let var = matchstr(line_content, '\v\w+\ze\s*=[^=]')
+
+  if empty(var)
+    " This is unlikely to happen if the search succeeded, but it's good practice
+    echo "Could not extract variable name from line."
+    return
+  endif
+
+  " Build the print statement using printf for clarity
+  let print_line = printf('std.debug.print("%s: {d}\\n", .{%s});', toupper(var), var)
+
+  " Append the new line below the cursor and indent it correctly
+  call append(line('.'), print_line)
+  normal! ==
+endfunction
+
+" Map the function to your leader key
+noremap <leader>tt :call <SID>GenZigPrint()<CR>
+
 
 function! FormatFunctionLine()
     let l:line = getline(".")
@@ -45,8 +90,10 @@ nnoremap <leader>jj :call FormatFunctionLine()<CR>
 autocmd FileType python map <buffer> <F9> :w<CR>:exec '!python' shellescape(@%, 1)<CR>
 autocmd FileType python imap <buffer> <F9> <esc>:w<CR>:exec '!python' shellescape(@%, 1)<CR>
 
-autocmd FileType rust map <buffer> <F9> :w<CR>:exec '!cargo run --release' shellescape(@%, 1)<CR>
-autocmd FileType rust imap <buffer> <F9> <esc>:w<CR>:exec '!cargo run --release' shellescape(@%, 1)<CR>
+autocmd FileType rust map <buffer> <F6> :w<CR>:exec '!cargo test -- --nocapture'<CR>
+autocmd FileType rust imap <buffer> <F6> <esc>:w<CR>:exec '!cargo test -- --nocapture'<CR>
+autocmd FileType rust map <buffer> <F9> :w<CR>:exec '!cargo run --release'<CR>
+autocmd FileType rust imap <buffer> <F9> <esc>:w<CR>:exec '!cargo run --release'<CR>
 
 autocmd FileType c map <buffer> <F9> :w<CR>:exec '!make run' shellescape(@%, 1)<CR>
 autocmd FileType c imap <buffer> <F9> <esc>:w<CR>:exec '!make run' shellescape(@%, 1)<CR>
@@ -58,6 +105,8 @@ autocmd FileType zig map <buffer> <F7> :w<CR>:exec '!zig build run -Doptimize=De
 autocmd FileType zig map <buffer> <F8> :w<CR>:exec '!zig build run -Doptimize=ReleaseSafe'<CR>
 autocmd FileType zig map <buffer> <F9> :w<CR>:exec '!zig build run -Doptimize=ReleaseFast'<CR>
 
+autocmd FileType odin map <buffer> <F9> :w<CR>:exec '!odin run .'<CR>
+
 
 call plug#begin()
 Plug 'jsborjesson/vim-uppercase-sql'
@@ -67,6 +116,7 @@ Plug 'nvim-lua/plenary.nvim'
 Plug 'nvim-telescope/telescope.nvim'
 Plug 'nvim-treesitter/nvim-treesitter', {'do': ':TSUpdate'}
 Plug 'neovim/nvim-lspconfig'
+Plug 'ziglang/zig.vim'
 Plug 'williamboman/mason.nvim'
 Plug 'hrsh7th/nvim-cmp'
 Plug 'hrsh7th/cmp-nvim-lsp'
@@ -97,12 +147,94 @@ require'nvim-treesitter.configs'.setup {
 }
 require("mason").setup()
 
-local servers = {'clangd', 'pyright', 'rust_analyzer', 'zls'}
-require'lspconfig'.clangd.setup{}
-require'lspconfig'.pyright.setup{}
-require'lspconfig'.rust_analyzer.setup{}
-require'lspconfig'.zls.setup{}
 
+local servers = {
+	'clangd', 'pyright', 'rust_analyzer', 'zls'
+}
+
+local on_attach = function(client, bufnr)
+  -- Map Ctrl+K to show hover documentation
+  vim.keymap.set('n', '<C-k>', vim.lsp.buf.hover, { buffer = bufnr, desc = "LSP Hover" })
+  -- Optionally, still map Shift+K if you want
+  vim.keymap.set('n', 'K', vim.lsp.buf.hover, { buffer = bufnr, desc = "LSP Hover" })
+end
+
+
+require'lspconfig'.ols.setup{
+  on_attach = function(client, bufnr)
+    -- client: The LSP client
+    -- bufnr: The buffer number
+
+    -- Map Ctrl+K to vim.lsp.buf.hover for Odin
+    vim.keymap.set('n', '<C-k>', vim.lsp.buf.hover, { buffer = bufnr })
+    
+    -- Optional: Print a message to confirm on_attach is being called
+    print("ols on_attach called for buffer: " .. bufnr)
+  end,
+  capabilities = {
+    hover = {
+      contentFormat = { 'markdown', 'plaintext' },
+    },
+  },
+}
+require'lspconfig'.clangd.setup{on_attach = on_attach}
+require'lspconfig'.pyright.setup{on_attach = on_attach}
+require'lspconfig'.rust_analyzer.setup{
+	on_attach = function(client, bufnr)
+		-- client: The LSP client
+		-- bufnr: The buffer number
+
+		-- Correctly map Shift+K to vim.lsp.buf.hover
+		vim.keymap.set('n', 'K', vim.lsp.buf.hover, { buffer = bufnr })
+		-- Or, if Shift is required in your terminal:
+		-- vim.keymap.set('n', '<S-K>', vim.lsp.buf.hover, { buffer = bufnr })
+
+		-- Optional: Print a message to confirm on_attach is being called
+		print("rust-analyzer on_attach called for buffer: " .. bufnr)
+	  end,
+	  capabilities = {
+		hover = {
+		  contentFormat = { 'markdown', 'plaintext' },
+		},
+	  },
+}
+require'lspconfig'.zls.setup{
+	cmd = { '/home/jakemehlman/zls/zig-out/bin/zls' },
+	settings = {
+		zls = {
+		  -- Whether to enable build-on-save diagnostics
+		  --
+		  -- Further information about build-on save:
+		  -- https://zigtools.org/zls/guides/build-on-save/
+		  -- enable_build_on_save = true,
+
+		  -- Neovim already provides basic syntax highlighting
+		  semantic_tokens = "partial",
+
+		  -- omit the following line if `zig` is in your PATH
+	 	  zig_exe_path = "/home/jakemehlman/Downloads/zig-x86_64-linux-0.14.1/zig",
+      	  zig_lib_path = "/home/jakemehlman/Downloads/zig-x86_64-linux-0.14.1/lib"
+		}
+	},
+
+	on_attach = function(client, bufnr)
+		-- client: The LSP client
+		-- bufnr: The buffer number
+
+		-- Correctly map Shift+K to vim.lsp.buf.hover
+		vim.keymap.set('n', 'K', vim.lsp.buf.hover, { buffer = bufnr })
+		-- Or, if Shift is required in your terminal:
+		-- vim.keymap.set('n', '<S-K>', vim.lsp.buf.hover, { buffer = bufnr })
+
+		-- Optional: Print a message to confirm on_attach is being called
+		print("zls on_attach called for buffer: " .. bufnr)
+	  end,
+	  capabilities = {
+		hover = {
+		  contentFormat = { 'markdown', 'plaintext' },
+		},
+	  },
+}
 EOF
 
 let g:zig_fmt_save 	   = 0
